@@ -26,11 +26,6 @@ let total;
 
     for (let i = 0; i < total; i++)
     {
-
-      // await page.goto('https://atlasbillingcompany.com/pricing/');
-      // await page.waitForSelector('#footer-info');
-      // const sections = await page.$$('.price-row');
-
       section = sections[i];
       button = await section.$('a:first-child');
       const newPagePromise = new Promise(x => browser.once('targetcreated', target => x(target.page())));
@@ -52,7 +47,6 @@ let total;
             .replace(/\t/g, '')
           return code;
         });
-
         cptCodes.push(cpt);
       } else {
         const cpt = '';
@@ -76,6 +70,7 @@ let total;
 
       console.log(procedures[i],cptCodes[i], i, "of", total);
     }
+
     await browser.close()
 
     //print arrays to file
@@ -83,10 +78,13 @@ let total;
       await fs.appendFile('out.csv', `${''}\t${procedures[i]}\t${cptCodes[i]}\n`);
     }
 
+
+    //Creater new file with cpt codes longer than 6 charaters
     var tempCpt;
     var weird;
+    //For every element in cptCodes
     for(let [index, element] of cptCodes.entries()){
-      tempCpt = element.split(',');
+      tempCpt = element.split(','); //create array of individual codes
 
       for (let i = 0; i < tempCpt.length; i++){
         if(tempCpt[i].length > 6){
@@ -96,11 +94,9 @@ let total;
 
       if (weird){
         await fs.appendFile('weird.csv', `${procedures[index]}\t${element}\n`);
+        weird = false;
       }
-
-      weird = false;
     }
-
     console.log('Done....')
 
   } catch(e){
