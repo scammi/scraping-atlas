@@ -1,46 +1,109 @@
-const request = require('request');
-const cheerio = require('cheerio');
-const fs = require('fs');
-const writeStream = fs.createWriteStream('post.csv');
+const puppeteer = require('puppeteer');
+const fs = require('fs-extra');
 
-// Write Headers
-writeStream.write(`Category¿ Procedure¿ CPT code \n`);
+let cptCodes = [];
+let procedures = [];
+let total;
+(async function main() {
+  try {
+    const browser = await puppeteer.launch({
+        headless: true
+    });
+    const page = await browser.newPage();
 
-request('https://atlasbillingcompany.com/pricing/', (error, response, html) => {
-  if (!error && response.statusCode == 200){
+    await page.setDefaultNavigationTimeout(0);
+    await page.goto('https://atlasbillingcompany.com/pricing/');
+    await page.waitForSelector('#footer-info');
 
-    const $ = cheerio.load(html);
-    var category = '';
+    await fs.writeFile('out.csv', 'Category\tProcedure\tCPT code\n');
+    await fs.writeFile('weird.csv','Procedure\tCPT code\n');
 
-    $('.et_pb_section').each((i,el)=> {
-      var procedure_search = $(el).find('.et_pb_text a').first().text().replace(/.$/,'');
-      if (procedure_search != ''){
-        var procedure = procedure_search;
 
-        var href = $(el).find('.et_pb_text a').first().attr('href');
-        request(`${href}`, (error, response, html) => {
-          if(!error && response.statusCode == 200) {
-            const $cpt = cheerio.load(html);
+    let sections = await page.$$('.price-row');
+    let total = sections.length;
+    let section;
+    let button;
 
-            var cpt = $cpt('.entry-content h6').text()
+    for (let i = 0; i < total; i++)
+    {
+
+      // await page.goto('https://atlasbillingcompany.com/pricing/');
+      // await page.waitForSelector('#footer-info');
+      // const sections = await page.$$('.price-row');
+
+      section = sections[i];
+      button = await section.$('a:first-child');
+      const newPagePromise = new Promise(x => browser.once('targetcreated', target => x(target.page())));
+      await button.click({button: 'middle'});
+
+      const page2 = await newPagePromise;
+
+      await page2.bringToFront();
+      await page2.waitForSelector('#et-main-area');
+
+      if(await page2.$('.entry-content h6')){
+
+        const cpt = await page2.$eval('.entry-content h6', (a) => {
+          let code = a.innerText
             .replace('CPT Code: ','')
-            .replace(/or/g, ' -')
+            .replace(/or/g,',')
             .replace('/', '')
-            .replace(/,/g, ' -');
-          }
-          else {
-            //console.log(error)
-          }
+            .replace(/\s/g, '')
+            .replace(/\t/g, '')
+          return code;
+        });
 
-          writeStream.write(`${category}¿ ${procedure}¿ ${cpt} \n`);
-
-        })
-
+        cptCodes.push(cpt);
+      } else {
+        const cpt = '';
+        cptCodes.push(cpt);
       }
 
-    })
+      if(await page2.$('.entry-title')){
+        const procedure = await page2.$eval('.entry-title', (a) => {
+          let proc = a.innerText.replace(/\t/g, '');
+          return proc;
+        });
+        procedures.push(procedure);
+      } else {
+        const procedure = '';
+        procedures.push(procedure);
+      }
 
-    console.log('Scraping Done...');
 
+      await page.bringToFront();
+      await page2.close();
+
+      console.log(procedures[i],cptCodes[i], i, "of", total);
+    }
+    await browser.close()
+
+    //print arrays to file
+    for( var i = 0; i < total; i++){
+      await fs.appendFile('out.csv', `${''}\t${procedures[i]}\t${cptCodes[i]}\n`);
+    }
+
+    var tempCpt;
+    var weird;
+    for(let [index, element] of cptCodes.entries()){
+      tempCpt = element.split(',');
+
+      for (let i = 0; i < tempCpt.length; i++){
+        if(tempCpt[i].length > 6){
+          weird = true;
+        }
+      }
+
+      if (weird){
+        await fs.appendFile('weird.csv', `${procedures[index]}\t${element}\n`);
+      }
+
+      weird = false;
+    }
+
+    console.log('Done....')
+
+  } catch(e){
+    console.log('our error', e);
   }
-})
+})();
